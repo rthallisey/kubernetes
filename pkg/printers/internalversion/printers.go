@@ -64,6 +64,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/discovery"
 	"k8s.io/kubernetes/pkg/apis/flowcontrol"
 	apihelpers "k8s.io/kubernetes/pkg/apis/flowcontrol/util"
+	"k8s.io/kubernetes/pkg/apis/lifecycle"
 	"k8s.io/kubernetes/pkg/apis/networking"
 	networkingutil "k8s.io/kubernetes/pkg/apis/networking/util"
 	nodeapi "k8s.io/kubernetes/pkg/apis/node"
@@ -743,6 +744,28 @@ func AddHandlers(h printers.PrintHandler) {
 	}
 	_ = h.TableHandler(workloadColumnDefinitions, printWorkload)
 	_ = h.TableHandler(workloadColumnDefinitions, printWorkloadList)
+
+	lifecycleTransitionColumnDefinitions := []metav1.TableColumnDefinition{
+		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
+		{Name: "Driver", Type: "string", Description: "The lifecycle driver responsible for this transition."},
+		{Name: "Start", Type: "string", Description: "The initial state of the lifecycle transition."},
+		{Name: "End", Type: "string", Description: "The desired terminal state of the lifecycle transition."},
+		{Name: "Node", Type: "string", Description: "The node where this transition should be executed."},
+		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
+	}
+	_ = h.TableHandler(lifecycleTransitionColumnDefinitions, printLifecycleTransition)
+	_ = h.TableHandler(lifecycleTransitionColumnDefinitions, printLifecycleTransitionList)
+
+	lifecycleEventColumnDefinitions := []metav1.TableColumnDefinition{
+		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
+		{Name: "Transition", Type: "string", Description: "The LifecycleTransition this event is bound to."},
+		{Name: "Node", Type: "string", Description: "The node where this event is bound."},
+		{Name: "Status", Type: "string", Description: "The current claim status of the event."},
+		{Name: "Driver", Type: "string", Description: "The lifecycle driver handling this event."},
+		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
+	}
+	_ = h.TableHandler(lifecycleEventColumnDefinitions, printLifecycleEvent)
+	_ = h.TableHandler(lifecycleEventColumnDefinitions, printLifecycleEventList)
 }
 
 // Pass ports=nil for all ports.
@@ -3342,6 +3365,58 @@ func printWorkloadList(list *scheduling.WorkloadList, options printers.GenerateO
 	}
 	return rows, nil
 }
+func printLifecycleTransition(obj *lifecycle.LifecycleTransition, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+	row := metav1.TableRow{
+		Object: runtime.RawExtension{Object: obj},
+	}
+	nodeName := ""
+	if obj.Spec.NodeName != nil {
+		nodeName = *obj.Spec.NodeName
+	}
+	row.Cells = append(row.Cells, obj.Name, obj.Spec.Driver, obj.Spec.Start, obj.Spec.End, nodeName, translateTimestampSince(obj.CreationTimestamp))
+	return []metav1.TableRow{row}, nil
+}
+
+func printLifecycleTransitionList(list *lifecycle.LifecycleTransitionList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+	rows := make([]metav1.TableRow, 0, len(list.Items))
+	for i := range list.Items {
+		r, err := printLifecycleTransition(&list.Items[i], options)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, r...)
+	}
+	return rows, nil
+}
+
+func printLifecycleEvent(obj *lifecycle.LifecycleEvent, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+	row := metav1.TableRow{
+		Object: runtime.RawExtension{Object: obj},
+	}
+	status := string(obj.Status.ClaimStatus)
+	if status == "" {
+		status = "<none>"
+	}
+	driver := obj.Status.Driver
+	if driver == "" {
+		driver = "<none>"
+	}
+	row.Cells = append(row.Cells, obj.Name, obj.Spec.TransitionName, obj.Spec.BindingNode, status, driver, translateTimestampSince(obj.CreationTimestamp))
+	return []metav1.TableRow{row}, nil
+}
+
+func printLifecycleEventList(list *lifecycle.LifecycleEventList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+	rows := make([]metav1.TableRow, 0, len(list.Items))
+	for i := range list.Items {
+		r, err := printLifecycleEvent(&list.Items[i], options)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, r...)
+	}
+	return rows, nil
+}
+
 func printBoolPtr(value *bool) string {
 	if value != nil {
 		return printBool(*value)

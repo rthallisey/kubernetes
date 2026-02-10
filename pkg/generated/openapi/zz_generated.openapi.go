@@ -57,6 +57,7 @@ import (
 	flowcontrolv1beta2 "k8s.io/api/flowcontrol/v1beta2"
 	v1beta3 "k8s.io/api/flowcontrol/v1beta3"
 	imagepolicyv1alpha1 "k8s.io/api/imagepolicy/v1alpha1"
+	lifecyclev1alpha1 "k8s.io/api/lifecycle/v1alpha1"
 	networkingv1 "k8s.io/api/networking/v1"
 	networkingv1beta1 "k8s.io/api/networking/v1beta1"
 	nodev1 "k8s.io/api/node/v1"
@@ -858,6 +859,13 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		imagepolicyv1alpha1.ImageReviewContainerSpec{}.OpenAPIModelName():                                               schema_k8sio_api_imagepolicy_v1alpha1_ImageReviewContainerSpec(ref),
 		imagepolicyv1alpha1.ImageReviewSpec{}.OpenAPIModelName():                                                        schema_k8sio_api_imagepolicy_v1alpha1_ImageReviewSpec(ref),
 		imagepolicyv1alpha1.ImageReviewStatus{}.OpenAPIModelName():                                                      schema_k8sio_api_imagepolicy_v1alpha1_ImageReviewStatus(ref),
+		lifecyclev1alpha1.LifecycleEvent{}.OpenAPIModelName():                                                           schema_k8sio_api_lifecycle_v1alpha1_LifecycleEvent(ref),
+		lifecyclev1alpha1.LifecycleEventList{}.OpenAPIModelName():                                                       schema_k8sio_api_lifecycle_v1alpha1_LifecycleEventList(ref),
+		lifecyclev1alpha1.LifecycleEventSpec{}.OpenAPIModelName():                                                       schema_k8sio_api_lifecycle_v1alpha1_LifecycleEventSpec(ref),
+		lifecyclev1alpha1.LifecycleEventStatus{}.OpenAPIModelName():                                                     schema_k8sio_api_lifecycle_v1alpha1_LifecycleEventStatus(ref),
+		lifecyclev1alpha1.LifecycleTransition{}.OpenAPIModelName():                                                      schema_k8sio_api_lifecycle_v1alpha1_LifecycleTransition(ref),
+		lifecyclev1alpha1.LifecycleTransitionList{}.OpenAPIModelName():                                                  schema_k8sio_api_lifecycle_v1alpha1_LifecycleTransitionList(ref),
+		lifecyclev1alpha1.LifecycleTransitionSpec{}.OpenAPIModelName():                                                  schema_k8sio_api_lifecycle_v1alpha1_LifecycleTransitionSpec(ref),
 		networkingv1.HTTPIngressPath{}.OpenAPIModelName():                                                               schema_k8sio_api_networking_v1_HTTPIngressPath(ref),
 		networkingv1.HTTPIngressRuleValue{}.OpenAPIModelName():                                                          schema_k8sio_api_networking_v1_HTTPIngressRuleValue(ref),
 		networkingv1.IPAddress{}.OpenAPIModelName():                                                                     schema_k8sio_api_networking_v1_IPAddress(ref),
@@ -40615,6 +40623,328 @@ func schema_k8sio_api_imagepolicy_v1alpha1_ImageReviewStatus(ref common.Referenc
 				},
 			},
 		},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleEvent(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleEvent represents a binding between a LifecycleTransition and the Kubelet/Driver responsible for executing it.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Spec defines the binding parameters for claiming a transition.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(lifecyclev1alpha1.LifecycleEventSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Status reports the current state of the transition claim.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(lifecyclev1alpha1.LifecycleEventStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			lifecyclev1alpha1.LifecycleEventSpec{}.OpenAPIModelName(), lifecyclev1alpha1.LifecycleEventStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleEventList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleEventList contains a list of LifecycleEvent resources.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(lifecyclev1alpha1.LifecycleEvent{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			lifecyclev1alpha1.LifecycleEvent{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleEventSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleEventSpec defines the binding parameters to claim a transition.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"transitionName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "transitionName refers to a LifecycleTransition object by name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"bindingNode": {
+						SchemaProps: spec.SchemaProps{
+							Description: "bindingNode identifies a specific Node whose Kubelet can claim the event.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"transitionName", "bindingNode"},
+			},
+		},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleEventStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleEventStatus reports the current state of the transition claim.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"claimStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "claimStatus represents the current phase of the event's lifecycle.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"driver": {
+						SchemaProps: spec.SchemaProps{
+							Description: "driver is a copy of the driver name from the LifecycleTransition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"sla": {
+						SchemaProps: spec.SchemaProps{
+							Description: "sla specifies the deadline by which the transition must complete.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleTransition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleTransition defines the desired intent for a Kubernetes resource to undergo a lifecycle change.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Spec defines the desired lifecycle transition.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(lifecyclev1alpha1.LifecycleTransitionSpec{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			lifecyclev1alpha1.LifecycleTransitionSpec{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleTransitionList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleTransitionList contains a list of LifecycleTransition resources.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(lifecyclev1alpha1.LifecycleTransition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			lifecyclev1alpha1.LifecycleTransition{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_k8sio_api_lifecycle_v1alpha1_LifecycleTransitionSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LifecycleTransitionSpec describes the parameters of a lifecycle transition.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"start": {
+						SchemaProps: spec.SchemaProps{
+							Description: "start identifies the initial state of the lifecycle transition.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"end": {
+						SchemaProps: spec.SchemaProps{
+							Description: "end identifies the desired terminal state of the lifecycle transition.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"nodeName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "nodeName identifies the specific Node that has a Driver capable of reconciling the LifecycleTransition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"nodeSelector": {
+						SchemaProps: spec.SchemaProps{
+							Description: "nodeSelector defines which Nodes have Drivers capable of reconciling the LifecycleTransition.",
+							Ref:         ref(corev1.NodeSelector{}.OpenAPIModelName()),
+						},
+					},
+					"allNodes": {
+						SchemaProps: spec.SchemaProps{
+							Description: "allNodes indicates that all Nodes are capable of reconciling the LifecycleTransition.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"sla": {
+						SchemaProps: spec.SchemaProps{
+							Description: "sla specifies the duration by which the transition from Start to End must be completed.",
+							Ref:         ref(metav1.Duration{}.OpenAPIModelName()),
+						},
+					},
+					"driver": {
+						SchemaProps: spec.SchemaProps{
+							Description: "driver specifies the unique identifier of the lifecycle driver responsible for reconciling this transition.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"start", "end", "driver"},
+			},
+		},
+		Dependencies: []string{
+			corev1.NodeSelector{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
 	}
 }
 

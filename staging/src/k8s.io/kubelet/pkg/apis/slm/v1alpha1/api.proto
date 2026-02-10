@@ -1,0 +1,90 @@
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// To regenerate api.pb.go run `hack/update-codegen.sh protobindings`
+
+syntax = "proto3";
+
+package k8s.io.kubelet.pkg.apis.slm.v1alpha1;
+option go_package = "k8s.io/kubelet/pkg/apis/slm/v1alpha1";
+
+// SLMPlugin is the gRPC service that a Specialized Lifecycle Management
+// driver must implement. The Kubelet calls these RPCs when it claims a
+// LifecycleEvent and needs the driver to execute the transition.
+service SLMPlugin {
+  // StartLifecycleTransition is called by the Kubelet after it claims
+  // a LifecycleEvent. The driver should begin executing the lifecycle
+  // transition (e.g., cordoning and draining a node).
+  rpc StartLifecycleTransition (StartLifecycleTransitionRequest)
+    returns (LifecycleTransitionResponse) {}
+
+  // EndLifecycleTransition is called by the Kubelet to check whether
+  // the transition has completed. The driver should verify that the
+  // end state has been reached (e.g., all pods have been evicted).
+  rpc EndLifecycleTransition (EndLifecycleTransitionRequest)
+    returns (LifecycleTransitionResponse) {}
+}
+
+message StartLifecycleTransitionRequest {
+  // The name of the LifecycleTransition object.
+  string transition_name = 1;
+
+  // The name of the LifecycleEvent object.
+  string event_name = 2;
+
+  // The node that the transition targets.
+  string node_name = 3;
+
+  // The start state identifier from the LifecycleTransition spec.
+  string start = 4;
+
+  // The end state identifier from the LifecycleTransition spec.
+  string end = 5;
+}
+
+message EndLifecycleTransitionRequest {
+  // The name of the LifecycleTransition object.
+  string transition_name = 1;
+
+  // The name of the LifecycleEvent object.
+  string event_name = 2;
+
+  // The node that the transition targets.
+  string node_name = 3;
+
+  // The start state identifier from the LifecycleTransition spec.
+  string start = 4;
+
+  // The end state identifier from the LifecycleTransition spec.
+  string end = 5;
+
+  // Whether the SLA has expired. The driver can use this to decide
+  // whether to abort or continue best-effort.
+  bool sla_expired = 6;
+}
+
+message LifecycleTransitionResponse {
+  // The lifecycle condition reason to publish on the target resource.
+  // This should correspond to either the start or end state from the
+  // LifecycleTransition spec.
+  string lifecycle_condition = 1;
+
+  // The node name for which the condition should be published.
+  string node_name = 2;
+
+  // If non-empty, the transition step failed with this error message.
+  string error = 3;
+}

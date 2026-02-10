@@ -23,4 +23,6 @@ const (
 	DevicePlugin = "DevicePlugin"
 	// DRAPlugin identifier for registered Dynamic Resourc Allocation plugins
 	DRAPlugin = "DRAPlugin"
+	// SLMPlugin identifier for registered Specialized Lifecycle Management plugins
+	SLMPlugin = "SLMPlugin"
 )

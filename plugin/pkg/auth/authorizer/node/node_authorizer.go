@@ -32,6 +32,7 @@ import (
 	certsapi "k8s.io/kubernetes/pkg/apis/certificates"
 	coordapi "k8s.io/kubernetes/pkg/apis/coordination"
 	api "k8s.io/kubernetes/pkg/apis/core"
+	lifecycleapi "k8s.io/kubernetes/pkg/apis/lifecycle"
 	resourceapi "k8s.io/kubernetes/pkg/apis/resource"
 	storageapi "k8s.io/kubernetes/pkg/apis/storage"
 	"k8s.io/kubernetes/pkg/auth/nodeidentifier"
@@ -93,9 +94,11 @@ var (
 	resourceClaimResource = resourceapi.Resource("resourceclaims")
 	vaResource            = storageapi.Resource("volumeattachments")
 	svcAcctResource       = api.Resource("serviceaccounts")
-	leaseResource         = coordapi.Resource("leases")
-	csiNodeResource       = storageapi.Resource("csinodes")
-	pcrResource           = certsapi.Resource("podcertificaterequests")
+	leaseResource             = coordapi.Resource("leases")
+	csiNodeResource           = storageapi.Resource("csinodes")
+	pcrResource               = certsapi.Resource("podcertificaterequests")
+	lifecycleEventResource    = lifecycleapi.Resource("lifecycleevents")
+	lifecycleTransResource    = lifecycleapi.Resource("lifecycletransitions")
 )
 
 func (r *NodeAuthorizer) RulesFor(ctx context.Context, user user.Info, namespace string) ([]authorizer.ResourceRuleInfo, []authorizer.NonResourceRuleInfo, bool, error) {
@@ -156,6 +159,16 @@ func (r *NodeAuthorizer) Authorize(ctx context.Context, attrs authorizer.Attribu
 		case pcrResource:
 			if r.features.Enabled(features.PodCertificateRequest) && r.features.Enabled(features.AuthorizeNodeWithSelectors) {
 				return r.authorizePodCertificateRequest(nodeName, attrs)
+			}
+			return authorizer.DecisionNoOpinion, "", nil
+		case lifecycleEventResource:
+			if r.features.Enabled(features.SpecializedLifecycleManagement) {
+				return r.authorizeLifecycleEvent(nodeName, attrs)
+			}
+			return authorizer.DecisionNoOpinion, "", nil
+		case lifecycleTransResource:
+			if r.features.Enabled(features.SpecializedLifecycleManagement) {
+				return r.authorizeLifecycleTransition(nodeName, attrs)
 			}
 			return authorizer.DecisionNoOpinion, "", nil
 		}
@@ -381,6 +394,61 @@ func (r *NodeAuthorizer) authorizeResourceSlice(nodeName string, attrs authorize
 	default:
 		klog.V(2).Infof("NODE DENY: '%s' %#v", nodeName, attrs)
 		return authorizer.DecisionNoOpinion, "only the following verbs are allowed for a ResourceSlice: get, watch, list, create, update, patch, delete, deletecollection", nil
+	}
+}
+
+// authorizeLifecycleEvent authorizes node requests to LifecycleEvent
+// lifecycle.k8s.io/lifecycleevents.
+//
+// The kubelet needs to list/watch events to find ones bound to its node,
+// get individual events, update their status (claim / succeed), and delete
+// completed events.
+func (r *NodeAuthorizer) authorizeLifecycleEvent(nodeName string, attrs authorizer.Attributes) (authorizer.Decision, string, error) {
+	verb := attrs.GetVerb()
+	switch {
+	case attrs.GetSubresource() == "status" && (verb == "update" || verb == "patch"):
+		// Allow status updates — the kubelet transitions events to Claimed / Succeeded.
+		return authorizer.DecisionAllow, "", nil
+	case attrs.GetSubresource() != "":
+		klog.V(2).Infof("NODE DENY: '%s' %#v", nodeName, attrs)
+		return authorizer.DecisionNoOpinion, "cannot authorize LifecycleEvent subresource", nil
+	}
+
+	switch verb {
+	case "get", "list", "watch":
+		// The kubelet lists/watches all events and filters client-side by bindingNode.
+		return authorizer.DecisionAllow, "", nil
+	case "delete":
+		// The kubelet deletes events after marking them Succeeded.
+		return authorizer.DecisionAllow, "", nil
+	default:
+		klog.V(2).Infof("NODE DENY: '%s' %#v", nodeName, attrs)
+		return authorizer.DecisionNoOpinion, "only get, list, watch, delete, and status update are allowed for LifecycleEvents", nil
+	}
+}
+
+// authorizeLifecycleTransition authorizes node requests to LifecycleTransition
+// lifecycle.k8s.io/lifecycletransitions.
+//
+// The kubelet needs to get individual transitions (to look up the driver name
+// and start/end states when processing a LifecycleEvent) and delete/list
+// transitions when cleaning up after a deregistered driver.
+func (r *NodeAuthorizer) authorizeLifecycleTransition(nodeName string, attrs authorizer.Attributes) (authorizer.Decision, string, error) {
+	if len(attrs.GetSubresource()) > 0 {
+		klog.V(2).Infof("NODE DENY: '%s' %#v", nodeName, attrs)
+		return authorizer.DecisionNoOpinion, "cannot authorize LifecycleTransition subresources", nil
+	}
+
+	switch attrs.GetVerb() {
+	case "get", "list", "watch":
+		// The kubelet reads transitions to resolve driver names and states.
+		return authorizer.DecisionAllow, "", nil
+	case "delete", "deletecollection":
+		// The kubelet cleans up node-scoped transitions when a driver deregisters.
+		return authorizer.DecisionAllow, "", nil
+	default:
+		klog.V(2).Infof("NODE DENY: '%s' %#v", nodeName, attrs)
+		return authorizer.DecisionNoOpinion, "only get, list, watch, delete, and deletecollection are allowed for LifecycleTransitions", nil
 	}
 }
 

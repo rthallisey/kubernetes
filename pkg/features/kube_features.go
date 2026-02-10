@@ -935,6 +935,14 @@ const (
 	// pod's lifecycle and will not block pod termination.
 	SidecarContainers featuregate.Feature = "SidecarContainers"
 
+	// owner: @rhallisey
+	// kep: https://kep.k8s.io/5683
+	//
+	// Enables Specialized Lifecycle Management (SLM) APIs and Kubelet
+	// integration for coordinating lifecycle transitions via external
+	// lifecycle drivers.
+	SpecializedLifecycleManagement featuregate.Feature = "SpecializedLifecycleManagement"
+
 	// owner: @liggitt
 	//
 	// Mitigates spurious statefulset rollouts due to controller revision comparison mismatches
@@ -1760,6 +1768,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 		{Version: version.MustParse("1.28"), Default: false, PreRelease: featuregate.Alpha},
 		{Version: version.MustParse("1.29"), Default: true, PreRelease: featuregate.Beta},
 		{Version: version.MustParse("1.33"), Default: true, LockToDefault: true, PreRelease: featuregate.GA}, // GA in 1.33 remove in 1.36
+	},
+
+	SpecializedLifecycleManagement: {
+		{Version: version.MustParse("1.36"), Default: false, PreRelease: featuregate.Alpha},
 	},
 
 	StatefulSetSemanticRevisionComparison: {
