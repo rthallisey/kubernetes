@@ -53,6 +53,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/devicemanager"
 	"k8s.io/kubernetes/pkg/kubelet/cm/dra"
 	"k8s.io/kubernetes/pkg/kubelet/cm/memorymanager"
+	"k8s.io/kubernetes/pkg/kubelet/cm/slm"
 	memorymanagerstate "k8s.io/kubernetes/pkg/kubelet/cm/memorymanager/state"
 	"k8s.io/kubernetes/pkg/kubelet/cm/resourceupdates"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager"
@@ -133,6 +134,8 @@ type containerManagerImpl struct {
 	topologyManager topologymanager.Manager
 	// Implementation of Dynamic Resource Allocation (DRA).
 	draManager *dra.Manager
+	// Implementation of Specialized Lifecycle Management (SLM).
+	slmManager *slm.Manager
 	// kubeClient is the interface to the Kubernetes API server. May be nil if the kubelet is running in standalone mode.
 	kubeClient clientset.Interface
 	// resourceUpdates is a channel that provides resource updates.
@@ -319,6 +322,12 @@ func NewContainerManager(ctx context.Context, mountUtil mount.Interface, cadviso
 			return nil, err
 		}
 		metrics.RegisterCollectors(cm.draManager.NewMetricsCollector())
+	}
+
+	// Initialize SLM manager
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.SpecializedLifecycleManagement) {
+		logger.Info("Creating Specialized Lifecycle Management (SLM) manager")
+		cm.slmManager = slm.NewManager(logger, kubeClient, string(nodeConfig.NodeName))
 	}
 	cm.kubeClient = kubeClient
 
@@ -631,6 +640,13 @@ func (cm *containerManagerImpl) Start(ctx context.Context, node *v1.Node,
 		}
 	}
 
+	// Initialize SLM manager
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.SpecializedLifecycleManagement) {
+		if err := cm.slmManager.Start(ctx); err != nil {
+			return fmt.Errorf("start slm manager error: %w", err)
+		}
+	}
+
 	// Initialize CPU manager
 	err := cm.cpuManager.Start(ctx, cpumanager.ActivePodsFunc(activePods), sourcesReady, podStatusProvider, runtimeService, containerMap.Clone())
 	if err != nil {
@@ -716,6 +732,10 @@ func (cm *containerManagerImpl) GetPluginRegistrationHandlers() map[string]cache
 
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		res[pluginwatcherapi.DRAPlugin] = cm.draManager.GetWatcherHandler()
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.SpecializedLifecycleManagement) {
+		res[pluginwatcherapi.SLMPlugin] = cm.slmManager.GetWatcherHandler()
 	}
 
 	return res

@@ -1,0 +1,59 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiVersion: kubeadm.k8s.io/v1beta4
+    apiServer:
+        extraArgs:
+          - name: "v"
+            value: "5"
+          - name: "runtime-config"
+            value: "lifecycle.k8s.io/v1alpha1=true"
+  - |
+    kind: KubeletConfiguration
+    apiVersion: kubelet.config.k8s.io/v1beta1
+    featureGates:
+      SpecializedLifecycleManagement: true
+  - |
+    kind: InitConfiguration
+    apiVersion: kubeadm.k8s.io/v1beta4
+    nodeRegistration:
+      kubeletExtraArgs:
+        - name: "v"
+          value: "5"
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        - name: "v"
+          value: "5"
+  # v1beta3 variants for compatibility with older kind versions
+  - |
+    kind: ClusterConfiguration
+    apiVersion: kubeadm.k8s.io/v1beta3
+    apiServer:
+        extraArgs:
+          v: "5"
+          runtime-config: "lifecycle.k8s.io/v1alpha1=true"
+  - |
+    kind: InitConfiguration
+    apiVersion: kubeadm.k8s.io/v1beta3
+    nodeRegistration:
+      kubeletExtraArgs:
+        v: "5"
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        v: "5"
+# Feature gates are applied to all components (apiserver, controller-manager,
+# scheduler, kubelet). This must be the last entry so Prow jobs can append
+# additional gates with:
+#
+#    --config <(cat test/e2e/slm/kind.yaml; echo "  <some feature>: true")
+featureGates:
+  SpecializedLifecycleManagement: true

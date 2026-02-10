@@ -1,0 +1,65 @@
+# This YAML deploys the hostpathplugin container to proxy gRPC connections
+# from the kubelet to the e2e test binary. The actual SLM test driver logic
+# runs in the e2e.test process via test/e2e/storage/drivers/proxy.
+#
+# This is the same pattern used by the DRA test driver.
+# See test/e2e/testing-manifests/dra/dra-test-driver-proxy.yaml
+
+kind: ReplicaSet
+apiVersion: apps/v1
+metadata:
+  name: slm-test-driver
+  labels:
+    app.kubernetes.io/instance: test-driver.slm.k8s.io
+    app.kubernetes.io/part-of: slm-test-driver
+    app.kubernetes.io/name: slm-test-driver-kubelet-plugin
+    app.kubernetes.io/component: kubelet-plugin
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: test-driver.slm.k8s.io
+      app.kubernetes.io/part-of: slm-test-driver
+      app.kubernetes.io/name: slm-test-driver-kubelet-plugin
+      app.kubernetes.io/component: kubelet-plugin
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: test-driver.slm.k8s.io
+        app.kubernetes.io/part-of: slm-test-driver
+        app.kubernetes.io/name: slm-test-driver-kubelet-plugin
+        app.kubernetes.io/component: kubelet-plugin
+    spec:
+      # Ensure that all pods run on distinct nodes.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/instance: test-driver.slm.k8s.io
+            topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: pause
+          image: registry.k8s.io/sig-storage/hostpathplugin:v1.16.1
+          command:
+            - /bin/sh
+            - -c
+            - while true; do sleep 10000; done
+          volumeMounts:
+            - mountPath: /var/lib/kubelet/plugins/test-driver.slm.k8s.io
+              name: socket-dir
+            - mountPath: /var/lib/kubelet/plugins_registry
+              name: registration-dir
+          securityContext:
+            privileged: true
+
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/test-driver.slm.k8s.io
+            type: DirectoryOrCreate
+          name: socket-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: DirectoryOrCreate
+          name: registration-dir

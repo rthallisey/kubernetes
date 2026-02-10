@@ -55,11 +55,13 @@ import (
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	etcd3testing "k8s.io/apiserver/pkg/storage/etcd3/testing"
 	"k8s.io/apiserver/pkg/util/compatibility"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/openapi"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	utilversion "k8s.io/component-base/version"
 	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
 	netutils "k8s.io/utils/net"
@@ -68,6 +70,7 @@ import (
 	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver"
 	"k8s.io/kubernetes/pkg/controlplane/reconcilers"
 	"k8s.io/kubernetes/pkg/controlplane/storageversionhashdata"
+	"k8s.io/kubernetes/pkg/features"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"k8s.io/kubernetes/pkg/kubeapiserver"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
@@ -76,6 +79,7 @@ import (
 	certificatesrest "k8s.io/kubernetes/pkg/registry/certificates/rest"
 	corerest "k8s.io/kubernetes/pkg/registry/core/rest"
 	discoveryrest "k8s.io/kubernetes/pkg/registry/discovery/rest"
+	lifecyclerest "k8s.io/kubernetes/pkg/registry/lifecycle/rest"
 	networkingrest "k8s.io/kubernetes/pkg/registry/networking/rest"
 	noderest "k8s.io/kubernetes/pkg/registry/node/rest"
 	policyrest "k8s.io/kubernetes/pkg/registry/policy/rest"
@@ -551,4 +555,55 @@ func TestGenericStorageProviders(t *testing.T) {
 	if g != len(generic) {
 		t.Errorf("Unexpected, generic APIs found: %#v", generic[g:])
 	}
+}
+
+func TestStorageProvidersSpecializedLifecycleManagement(t *testing.T) {
+	hasLifecycleProvider := func(providers []controlplaneapiserver.RESTStorageProvider) bool {
+		for _, provider := range providers {
+			if _, ok := provider.(lifecyclerest.RESTStorageProvider); ok {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("disabled", func(t *testing.T) {
+		featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SpecializedLifecycleManagement, false)
+
+		_, config, _ := setUp(t)
+		completed := config.Complete()
+		client, err := kubernetes.NewForConfig(config.ControlPlane.Generic.LoopbackClientConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		providers, err := completed.StorageProviders(client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if hasLifecycleProvider(providers) {
+			t.Fatal("unexpected lifecycle REST storage provider when SpecializedLifecycleManagement is disabled")
+		}
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SpecializedLifecycleManagement, true)
+
+		_, config, _ := setUp(t)
+		completed := config.Complete()
+		client, err := kubernetes.NewForConfig(config.ControlPlane.Generic.LoopbackClientConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		providers, err := completed.StorageProviders(client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !hasLifecycleProvider(providers) {
+			t.Fatal("expected lifecycle REST storage provider when SpecializedLifecycleManagement is enabled")
+		}
+	})
 }

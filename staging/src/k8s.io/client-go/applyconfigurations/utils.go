@@ -47,6 +47,7 @@ import (
 	flowcontrolv1beta2 "k8s.io/api/flowcontrol/v1beta2"
 	v1beta3 "k8s.io/api/flowcontrol/v1beta3"
 	imagepolicyv1alpha1 "k8s.io/api/imagepolicy/v1alpha1"
+	lifecyclev1alpha1 "k8s.io/api/lifecycle/v1alpha1"
 	networkingv1 "k8s.io/api/networking/v1"
 	networkingv1beta1 "k8s.io/api/networking/v1beta1"
 	nodev1 "k8s.io/api/node/v1"
@@ -101,6 +102,7 @@ import (
 	flowcontrolv1beta3 "k8s.io/client-go/applyconfigurations/flowcontrol/v1beta3"
 	applyconfigurationsimagepolicyv1alpha1 "k8s.io/client-go/applyconfigurations/imagepolicy/v1alpha1"
 	internal "k8s.io/client-go/applyconfigurations/internal"
+	applyconfigurationslifecyclev1alpha1 "k8s.io/client-go/applyconfigurations/lifecycle/v1alpha1"
 	applyconfigurationsmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	applyconfigurationsnetworkingv1 "k8s.io/client-go/applyconfigurations/networking/v1"
 	applyconfigurationsnetworkingv1beta1 "k8s.io/client-go/applyconfigurations/networking/v1beta1"
@@ -1318,6 +1320,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationsapiserverinternalv1alpha1.StorageVersionConditionApplyConfiguration{}
 	case apiserverinternalv1alpha1.SchemeGroupVersion.WithKind("StorageVersionStatus"):
 		return &applyconfigurationsapiserverinternalv1alpha1.StorageVersionStatusApplyConfiguration{}
+
+		// Group=lifecycle.k8s.io, Version=v1alpha1
+	case lifecyclev1alpha1.SchemeGroupVersion.WithKind("LifecycleEvent"):
+		return &applyconfigurationslifecyclev1alpha1.LifecycleEventApplyConfiguration{}
+	case lifecyclev1alpha1.SchemeGroupVersion.WithKind("LifecycleEventSpec"):
+		return &applyconfigurationslifecyclev1alpha1.LifecycleEventSpecApplyConfiguration{}
+	case lifecyclev1alpha1.SchemeGroupVersion.WithKind("LifecycleEventStatus"):
+		return &applyconfigurationslifecyclev1alpha1.LifecycleEventStatusApplyConfiguration{}
+	case lifecyclev1alpha1.SchemeGroupVersion.WithKind("LifecycleTransition"):
+		return &applyconfigurationslifecyclev1alpha1.LifecycleTransitionApplyConfiguration{}
+	case lifecyclev1alpha1.SchemeGroupVersion.WithKind("LifecycleTransitionSpec"):
+		return &applyconfigurationslifecyclev1alpha1.LifecycleTransitionSpecApplyConfiguration{}
 
 		// Group=meta.k8s.io, Version=v1
 	case metav1.SchemeGroupVersion.WithKind("Condition"):

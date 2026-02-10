@@ -10731,6 +10731,94 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: reason
       type:
         scalar: string
+- name: io.k8s.api.lifecycle.v1alpha1.LifecycleEvent
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+      default: {}
+    - name: spec
+      type:
+        namedType: io.k8s.api.lifecycle.v1alpha1.LifecycleEventSpec
+      default: {}
+    - name: status
+      type:
+        namedType: io.k8s.api.lifecycle.v1alpha1.LifecycleEventStatus
+      default: {}
+- name: io.k8s.api.lifecycle.v1alpha1.LifecycleEventSpec
+  map:
+    fields:
+    - name: bindingNode
+      type:
+        scalar: string
+      default: ""
+    - name: transitionName
+      type:
+        scalar: string
+      default: ""
+- name: io.k8s.api.lifecycle.v1alpha1.LifecycleEventStatus
+  map:
+    fields:
+    - name: claimStatus
+      type:
+        scalar: string
+    - name: driver
+      type:
+        scalar: string
+    - name: sla
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+- name: io.k8s.api.lifecycle.v1alpha1.LifecycleTransition
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+      default: {}
+    - name: spec
+      type:
+        namedType: io.k8s.api.lifecycle.v1alpha1.LifecycleTransitionSpec
+      default: {}
+- name: io.k8s.api.lifecycle.v1alpha1.LifecycleTransitionSpec
+  map:
+    fields:
+    - name: allNodes
+      type:
+        scalar: boolean
+    - name: driver
+      type:
+        scalar: string
+      default: ""
+    - name: end
+      type:
+        scalar: string
+      default: ""
+    - name: nodeName
+      type:
+        scalar: string
+    - name: nodeSelector
+      type:
+        namedType: io.k8s.api.core.v1.NodeSelector
+    - name: sla
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
+    - name: start
+      type:
+        scalar: string
+      default: ""
 - name: io.k8s.api.networking.v1.HTTPIngressPath
   map:
     fields:
@@ -15260,6 +15348,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: propagationPolicy
       type:
         scalar: string
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
+  scalar: string
 - name: io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1
   map:
     elementType:

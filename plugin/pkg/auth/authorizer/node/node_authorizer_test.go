@@ -121,6 +121,18 @@ func TestNodeAuthorizer(t *testing.T) {
 		return f
 	}
 
+	specializedLifecycleManagementEnabled := func(t testing.TB) featuregate.FeatureGate {
+		f := utilfeature.DefaultFeatureGate.DeepCopy()
+		featuregatetesting.SetFeatureGateDuringTest(t, f, features.SpecializedLifecycleManagement, true)
+		return f
+	}
+
+	specializedLifecycleManagementDisabled := func(t testing.TB) featuregate.FeatureGate {
+		f := utilfeature.DefaultFeatureGate.DeepCopy()
+		featuregatetesting.SetFeatureGateDuringTest(t, f, features.SpecializedLifecycleManagement, false)
+		return f
+	}
+
 	featureVariants := []struct {
 		suffix   string
 		features func(t testing.TB) featuregate.FeatureGate
@@ -606,6 +618,58 @@ func TestNodeAuthorizer(t *testing.T) {
 			name:   "allowed delete ResourceSlice",
 			attrs:  authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "delete", Resource: "resourceslices", APIGroup: "resource.k8s.io", Name: "slice0-node0"},
 			expect: authorizer.DecisionAllow,
+		},
+
+		// LifecycleEvent / LifecycleTransition
+		{
+			name:     "disallowed lifecycleevent get when SLM disabled",
+			attrs:    authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "get", Resource: "lifecycleevents", APIGroup: "lifecycle.k8s.io", Name: "event-node0"},
+			expect:   authorizer.DecisionNoOpinion,
+			features: specializedLifecycleManagementDisabled,
+		},
+		{
+			name:     "allowed lifecycleevent update when SLM enabled",
+			attrs:    authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "update", Resource: "lifecycleevents", APIGroup: "lifecycle.k8s.io", Name: "event-node0"},
+			expect:   authorizer.DecisionAllow,
+			features: specializedLifecycleManagementEnabled,
+		},
+		{
+			name:     "allowed lifecycleevent status update when SLM enabled",
+			attrs:    authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "update", Resource: "lifecycleevents", Subresource: "status", APIGroup: "lifecycle.k8s.io", Name: "event-node0"},
+			expect:   authorizer.DecisionAllow,
+			features: specializedLifecycleManagementEnabled,
+		},
+		{
+			name:     "allowed filtered list lifecycleevents when SLM enabled",
+			attrs:    authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "list", Resource: "lifecycleevents", APIGroup: "lifecycle.k8s.io", FieldSelectorRequirements: mustParseFields("spec.bindingNode==node0")},
+			expect:   authorizer.DecisionAllow,
+			features: specializedLifecycleManagementEnabled,
+		},
+		{
+			name:         "disallowed unfiltered list lifecycleevents when SLM enabled",
+			attrs:        authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "list", Resource: "lifecycleevents", APIGroup: "lifecycle.k8s.io"},
+			expect:       authorizer.DecisionNoOpinion,
+			expectReason: "can only list/watch lifecycleevents with bindingNode field selector",
+			features:     specializedLifecycleManagementEnabled,
+		},
+		{
+			name:     "allowed lifecycletransition get when SLM enabled",
+			attrs:    authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "get", Resource: "lifecycletransitions", APIGroup: "lifecycle.k8s.io", Name: "transition-node0"},
+			expect:   authorizer.DecisionAllow,
+			features: specializedLifecycleManagementEnabled,
+		},
+		{
+			name:     "allowed filtered deletecollection lifecycletransitions when SLM enabled",
+			attrs:    authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "deletecollection", Resource: "lifecycletransitions", APIGroup: "lifecycle.k8s.io", FieldSelectorRequirements: mustParseFields("spec.nodeName==node0")},
+			expect:   authorizer.DecisionAllow,
+			features: specializedLifecycleManagementEnabled,
+		},
+		{
+			name:         "disallowed unfiltered deletecollection lifecycletransitions when SLM enabled",
+			attrs:        authorizer.AttributesRecord{User: node0, ResourceRequest: true, Verb: "deletecollection", Resource: "lifecycletransitions", APIGroup: "lifecycle.k8s.io"},
+			expect:       authorizer.DecisionNoOpinion,
+			expectReason: "can only list/watch/deletecollection lifecycletransitions with nodeName field selector",
+			features:     specializedLifecycleManagementEnabled,
 		},
 
 		// pods
