@@ -1,0 +1,42 @@
+# Real driver deployments must replace all occurrences of "slm-external-controller"
+# with something specific to their controller.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: slm-external-controller-service-account
+  namespace: slm-external-controller-namespace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: slm-external-controller-role
+rules:
+- apiGroups: ["lifecycle.k8s.io"]
+  resources: ["lifecycletransitions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["lifecycle.k8s.io"]
+  resources: ["lifecycleevents"]
+  verbs: ["get", "list", "watch", "delete"]
+- apiGroups: ["lifecycle.k8s.io"]
+  resources: ["lifecycleevents/status"]
+  verbs: ["update", "patch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["nodes/status"]
+  verbs: ["update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: slm-external-controller-role-binding
+subjects:
+- kind: ServiceAccount
+  name: slm-external-controller-service-account
+  namespace: slm-external-controller-namespace
+roleRef:
+  kind: ClusterRole
+  name: slm-external-controller-role
+  apiGroup: rbac.authorization.k8s.io

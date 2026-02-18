@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -46,6 +47,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 	v1 "k8s.io/api/core/v1"
+	lifecycleapi "k8s.io/api/lifecycle/v1alpha1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -54,6 +56,7 @@ import (
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 	testutils "k8s.io/kubernetes/test/utils"
+	slmtestdriver "k8s.io/kubernetes/test/e2e/slm/test-driver/app"
 )
 
 var _ = SIGDescribe("GracefulNodeShutdown", framework.WithSerial(), feature.GracefulNodeShutdown, feature.GracefulNodeShutdownBasedOnPodPriority, func() {
@@ -377,6 +380,314 @@ var _ = SIGDescribe("GracefulNodeShutdown", framework.WithSerial(), feature.Grac
 		})
 	})
 
+	framework.Context("when gracefully shutting down with SLM enabled", framework.WithFeatureGate(features.SpecializedLifecycleManagement), f.WithDisruptive(), func() {
+		const (
+			pollInterval                        = 1 * time.Second
+			podStatusUpdateTimeout              = 30 * time.Second
+			nodeStatusUpdateTimeout             = 30 * time.Second
+			nodeShutdownGracePeriod             = 20 * time.Second
+			nodeShutdownGracePeriodCriticalPods = 10 * time.Second
+		)
+
+		tempSetCurrentKubeletConfig(f, func(ctx context.Context, initialConfig *kubeletconfig.KubeletConfiguration) {
+			if initialConfig.FeatureGates == nil {
+				initialConfig.FeatureGates = map[string]bool{}
+			}
+			initialConfig.FeatureGates[string(features.GracefulNodeShutdown)] = true
+			initialConfig.FeatureGates[string(features.GracefulNodeShutdownBasedOnPodPriority)] = false
+			initialConfig.FeatureGates[string(features.SpecializedLifecycleManagement)] = true
+
+			initialConfig.ShutdownGracePeriod = metav1.Duration{Duration: nodeShutdownGracePeriod}
+			initialConfig.ShutdownGracePeriodCriticalPods = metav1.Duration{Duration: nodeShutdownGracePeriodCriticalPods}
+		})
+
+		ginkgo.BeforeEach(func(ctx context.Context) {
+			ginkgo.By("Wait for the node to be ready")
+			waitForNodeReady(ctx)
+		})
+
+		ginkgo.AfterEach(func() {
+			ginkgo.By("Emitting Shutdown false signal; cancelling the shutdown")
+			err := emitSignalPrepareForShutdown(false)
+			framework.ExpectNoError(err)
+		})
+
+		ginkgo.It("should resume graceful shutdown after kubelet restart using LifecycleTransition node condition", func(ctx context.Context) {
+			nodeName := getNodeName(ctx, f)
+			nodeSelector := fields.Set{
+				"spec.nodeName": nodeName,
+			}.AsSelector().String()
+
+			podName := "period-120-" + string(uuid.NewUUID())
+			criticalPodName := "period-critical-120-" + string(uuid.NewUUID())
+			pods := []*v1.Pod{
+				getGracePeriodOverrideTestPod(podName, nodeName, 120, ""),
+				getGracePeriodOverrideTestPod(criticalPodName, nodeName, 120, scheduling.SystemNodeCritical),
+			}
+
+			ginkgo.By("Creating batch pods")
+			e2epod.NewPodClient(f).CreateBatch(ctx, pods)
+
+			list, err := e2epod.NewPodClient(f).List(ctx, metav1.ListOptions{
+				FieldSelector: nodeSelector,
+			})
+			framework.ExpectNoError(err)
+			gomega.Expect(list.Items).To(gomega.HaveLen(len(pods)), "the number of pods is not as expected")
+
+			ginkgo.By("Verifying batch pods are running")
+			for _, pod := range list.Items {
+				if podReady, err := testutils.PodRunningReady(&pod); err != nil || !podReady {
+					framework.Failf("Failed to start batch pod: %v", pod.Name)
+				}
+			}
+
+			ginkgo.By("Emitting shutdown signal")
+			err = emitSignalPrepareForShutdown(true)
+			framework.ExpectNoError(err)
+
+			ginkgo.By("Waiting until only non-critical pods are shutdown")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				list, err = e2epod.NewPodClient(f).List(ctx, metav1.ListOptions{
+					FieldSelector: nodeSelector,
+				})
+				if err != nil {
+					return err
+				}
+				gomega.Expect(list.Items).To(gomega.HaveLen(len(pods)), "the number of pods is not as expected")
+
+				for _, pod := range list.Items {
+					if kubelettypes.IsCriticalPod(&pod) {
+						if isPodShutdown(&pod) {
+							return fmt.Errorf("critical pod (%v/%v) should still be running before kubelet restart", pod.Namespace, pod.Name)
+						}
+					} else {
+						if !isPodShutdown(&pod) {
+							return fmt.Errorf("non-critical pod (%v/%v) should already be shutdown before kubelet restart", pod.Namespace, pod.Name)
+						}
+					}
+				}
+				return nil
+			}, podStatusUpdateTimeout, pollInterval).Should(gomega.Succeed())
+
+			driverName := fmt.Sprintf("gns-amnesia-%d.slm.k8s.io", time.Now().UnixNano())
+			transitionName := fmt.Sprintf("%s-%s", driverName, nodeName)
+			startState := "shutdown-drain-started"
+			endState := "shutdown-drain-complete"
+
+			ginkgo.By("Starting example SLM kubelet plugin driver")
+			plugin, err := slmtestdriver.StartPlugin(
+				ctx,
+				driverName,
+				f.ClientSet,
+				nodeName,
+				[]slmtestdriver.TransitionSpec{
+					{
+						Name:     transitionName,
+						Start:    startState,
+						End:      endState,
+						NodeName: &nodeName,
+					},
+				},
+				nil,
+			)
+			framework.ExpectNoError(err)
+			ginkgo.DeferCleanup(func() {
+				plugin.Stop()
+			})
+
+			ginkgo.By("Waiting for SLM plugin registration with kubelet")
+			gomega.Eventually(func() bool {
+				return plugin.IsRegistered()
+			}, nodeStatusUpdateTimeout, pollInterval).Should(gomega.BeTrue())
+
+			ginkgo.By("Waiting for LifecycleTransition to exist")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				_, err := f.ClientSet.LifecycleV1alpha1().LifecycleTransitions().Get(ctx, transitionName, metav1.GetOptions{})
+				return err
+			}, nodeStatusUpdateTimeout, pollInterval).Should(gomega.Succeed())
+
+			eventName := fmt.Sprintf("gns-amnesia-%d", time.Now().UnixNano())
+			event := &lifecycleapi.LifecycleEvent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: eventName,
+				},
+				Spec: lifecycleapi.LifecycleEventSpec{
+					TransitionName: transitionName,
+					BindingNode:    nodeName,
+				},
+				Status: lifecycleapi.LifecycleEventStatus{
+					ClaimStatus: lifecycleapi.LifecycleEventPending,
+				},
+			}
+			ginkgo.By("Creating LifecycleEvent")
+			_, err = f.ClientSet.LifecycleV1alpha1().LifecycleEvents().Create(ctx, event, metav1.CreateOptions{})
+			framework.ExpectNoError(err)
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				_ = f.ClientSet.LifecycleV1alpha1().LifecycleEvents().Delete(ctx, eventName, metav1.DeleteOptions{})
+			})
+
+			ginkgo.By("Waiting for LifecycleEvent to be Claimed")
+			gomega.Eventually(ctx, func(ctx context.Context) (lifecycleapi.LifecycleEventClaimStatus, error) {
+				ev, err := f.ClientSet.LifecycleV1alpha1().LifecycleEvents().Get(ctx, eventName, metav1.GetOptions{})
+				if err != nil {
+					return "", err
+				}
+				return ev.Status.ClaimStatus, nil
+			}, 2*time.Minute, pollInterval).Should(gomega.Equal(lifecycleapi.LifecycleEventClaimed))
+
+			ginkgo.By("Waiting for LifecycleTransition node condition to indicate in-progress shutdown")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				reason, found, err := getNodeConditionReasonByType(ctx, f, nodeName, "LifecycleTransition")
+				if err != nil {
+					return err
+				}
+				if !found {
+					return fmt.Errorf("LifecycleTransition condition not set yet")
+				}
+				if reason != startState {
+					return fmt.Errorf("expected LifecycleTransition reason %q, got %q", startState, reason)
+				}
+				return nil
+			}, nodeStatusUpdateTimeout, pollInterval).Should(gomega.Succeed())
+
+			probePodName := "schedule-during-shutdown-" + string(uuid.NewUUID())
+			probePod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: probePodName,
+				},
+				Spec: v1.PodSpec{
+					NodeName: nodeName,
+					Containers: []v1.Container{
+						{
+							Name:    "pause",
+							Image:   busyboxImage,
+							Command: []string{"sh", "-c", "sleep 3600"},
+						},
+					},
+				},
+			}
+
+			ginkgo.By("Creating a new pod while the node is shutting down")
+			e2epod.NewPodClient(f).Create(ctx, probePod)
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				e2epod.NewPodClient(f).DeleteSync(ctx, probePodName, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+			})
+
+			ginkgo.By("Verifying the new pod cannot be scheduled while shutdown is in progress")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				pod, err := e2epod.NewPodClient(f).Get(ctx, probePodName, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				if pod.Spec.NodeName != nodeName {
+					return fmt.Errorf("pod %q should remain pinned to node %q, got %q", pod.Name, nodeName, pod.Spec.NodeName)
+				}
+
+				if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodSucceeded {
+					return fmt.Errorf("pod %q unexpectedly admitted with phase %q", pod.Name, pod.Status.Phase)
+				}
+
+				events, err := f.ClientSet.CoreV1().Events(f.Namespace.Name).List(ctx, metav1.ListOptions{
+					FieldSelector: fields.Set{
+						"involvedObject.kind":      "Pod",
+						"involvedObject.name":      probePodName,
+						"involvedObject.namespace": f.Namespace.Name,
+						"type":                     string(v1.EventTypeWarning),
+					}.AsSelector().String(),
+				})
+				if err != nil {
+					return err
+				}
+				for _, event := range events.Items {
+					if event.Reason == "NodeShutdown" || strings.Contains(strings.ToLower(event.Message), "node is shutting down") {
+						return nil
+					}
+				}
+				return fmt.Errorf("no pod rejection event observed yet for %q", probePodName)
+			}, nodeStatusUpdateTimeout, pollInterval).Should(gomega.Succeed())
+
+			gomega.Consistently(ctx, func(ctx context.Context) error {
+				pod, err := e2epod.NewPodClient(f).Get(ctx, probePodName, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodSucceeded {
+					return fmt.Errorf("pod %q unexpectedly admitted with phase %q", pod.Name, pod.Status.Phase)
+				}
+				return nil
+			}, 10*time.Second, pollInterval).Should(gomega.Succeed())
+
+			ginkgo.By("Stopping kubelet during in-progress shutdown")
+			restart := mustStopKubelet(ctx, f)
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				if restart != nil {
+					restart(ctx)
+				}
+			})
+
+			ginkgo.By("Restarting kubelet")
+			restart(ctx)
+			restart = nil
+
+			ginkgo.By("Verifying LifecycleTransition condition remains in start state immediately after kubelet restart")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				reason, found, err := getNodeConditionReasonByType(ctx, f, nodeName, "LifecycleTransition")
+				if err != nil {
+					return err
+				}
+				if !found {
+					return fmt.Errorf("LifecycleTransition condition missing after kubelet restart")
+				}
+				if reason != startState {
+					return fmt.Errorf("expected LifecycleTransition reason %q immediately after restart, got %q", startState, reason)
+				}
+				return nil
+			}, nodeStatusUpdateTimeout, pollInterval).Should(gomega.Succeed())
+
+			ginkgo.By("Verifying LifecycleEvent completes and is deleted after kubelet restart")
+			gomega.Eventually(ctx, func(ctx context.Context) bool {
+				_, err := f.ClientSet.LifecycleV1alpha1().LifecycleEvents().Get(ctx, eventName, metav1.GetOptions{})
+				return apierrors.IsNotFound(err)
+			}, 2*time.Minute, pollInterval).Should(gomega.BeTrue())
+
+			ginkgo.By("Verifying LifecycleTransition node condition reaches end state after kubelet restart")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				reason, found, err := getNodeConditionReasonByType(ctx, f, nodeName, "LifecycleTransition")
+				if err != nil {
+					return err
+				}
+				if !found {
+					return fmt.Errorf("LifecycleTransition condition missing")
+				}
+				if reason != endState {
+					return fmt.Errorf("expected LifecycleTransition reason %q, got %q", endState, reason)
+				}
+				return nil
+			}, nodeStatusUpdateTimeout, pollInterval).Should(gomega.Succeed())
+
+			ginkgo.By("Verifying all pods are eventually shutdown after kubelet restart")
+			gomega.Eventually(ctx, func(ctx context.Context) error {
+				list, err = e2epod.NewPodClient(f).List(ctx, metav1.ListOptions{
+					FieldSelector: nodeSelector,
+				})
+				if err != nil {
+					return err
+				}
+				gomega.Expect(list.Items).To(gomega.HaveLen(len(pods)), "the number of pods is not as expected")
+
+				for _, pod := range list.Items {
+					if !isPodShutdown(&pod) {
+						framework.Logf("Expecting pod (%v/%v) to be shutdown, but it's not currently: Pod Status %+v", pod.Namespace, pod.Name, pod.Status)
+						return fmt.Errorf("pod (%v/%v) should be shutdown, phase: %s", pod.Namespace, pod.Name, pod.Status.Phase)
+					}
+				}
+				return nil
+			},
+				podStatusUpdateTimeout+(nodeShutdownGracePeriod-nodeShutdownGracePeriodCriticalPods),
+				pollInterval).Should(gomega.Succeed())
+		})
+	})
+
 	framework.Context("when gracefully shutting down with Pod priority", framework.WithFlaky(), func() {
 
 		const (
@@ -684,4 +995,19 @@ func isPodReadyToStartConditionSetToFalse(pod *v1.Pod) bool {
 	}
 
 	return readyToStartConditionSetToFalse
+}
+
+func getNodeConditionReasonByType(ctx context.Context, f *framework.Framework, nodeName string, conditionType v1.NodeConditionType) (string, bool, error) {
+	node, err := f.ClientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return "", false, err
+	}
+
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == conditionType {
+			return condition.Reason, true, nil
+		}
+	}
+
+	return "", false, nil
 }

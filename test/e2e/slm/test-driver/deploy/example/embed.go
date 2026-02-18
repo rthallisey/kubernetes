@@ -22,3 +22,6 @@ import (
 
 //go:embed plugin-permissions.yaml
 var PluginPermissions string
+
+//go:embed external-controller-permissions.yaml
+var ExternalControllerPermissions string

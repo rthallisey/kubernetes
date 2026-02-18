@@ -1096,6 +1096,8 @@ func NewMainKubelet(ctx context.Context,
 	// setup node shutdown manager
 	shutdownManager := nodeshutdown.NewManager(&nodeshutdown.Config{
 		Logger:                           logger,
+		KubeClient:                       kubeDeps.KubeClient,
+		NodeName:                         string(klet.nodeName),
 		VolumeManager:                    klet.volumeManager,
 		Recorder:                         kubeDeps.Recorder,
 		NodeRef:                          nodeRef,

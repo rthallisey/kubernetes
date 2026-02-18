@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -182,6 +183,54 @@ func NewCommand() *cobra.Command {
 	}
 	cmd.AddCommand(kubeletPlugin)
 
+	externalController := &cobra.Command{
+		Use:   "external-controller",
+		Short: "run as centralized lifecycle controller",
+		Long:  "slm-test-driver external-controller demonstrates the non-node-local controller method for driving lifecycle transitions.",
+		Args:  cobra.ExactArgs(0),
+	}
+	externalControllerFlagSets := cliflag.NamedFlagSets{}
+	fs = externalControllerFlagSets.FlagSet("SLM")
+	controllerNodeName := fs.String("node-name", "", "Name of the node to target.")
+	controllerTransitionName := fs.String("transition-name", "", "LifecycleTransition name. Defaults to <drivername>-<node-name>.")
+	controllerEventName := fs.String("event-name", "", "LifecycleEvent name. Defaults to <transition-name>-event.")
+	controllerStartState := fs.String("start", "test-drain-started", "LifecycleTransition start state.")
+	controllerEndState := fs.String("end", "test-drain-complete", "LifecycleTransition end state.")
+	deleteCompletedEvent := fs.Bool("delete-completed-event", true, "Delete LifecycleEvent after marking it Succeeded.")
+	autoCompleteAfter := fs.Duration("auto-complete-after", 0, "If >0, automatically mark transition complete after this duration from event claim.")
+	pollInterval := fs.Duration("poll-interval", time.Second, "Reconcile poll interval.")
+	fs = externalController.Flags()
+	for _, f := range externalControllerFlagSets.FlagSets {
+		fs.AddFlagSet(f)
+	}
+
+	externalController.RunE = func(cmd *cobra.Command, args []string) error {
+		if *controllerNodeName == "" {
+			return errors.New("--node-name not set")
+		}
+		transitionName := *controllerTransitionName
+		if transitionName == "" {
+			transitionName = *driverName + "-" + *controllerNodeName
+		}
+		eventName := *controllerEventName
+		if eventName == "" {
+			eventName = transitionName + "-event"
+		}
+
+		return runExternalController(cmd.Context(), clientset, ExternalControllerOptions{
+			DriverName:           *driverName,
+			NodeName:             *controllerNodeName,
+			TransitionName:       transitionName,
+			EventName:            eventName,
+			StartState:           *controllerStartState,
+			EndState:             *controllerEndState,
+			PollInterval:         *pollInterval,
+			DeleteCompletedEvent: *deleteCompletedEvent,
+			AutoCompleteAfter:    *autoCompleteAfter,
+		})
+	}
+	cmd.AddCommand(externalController)
+
 	cols, _, _ := term.TerminalSize(cmd.OutOrStdout())
 	cliflag.SetUsageAndHelpFunc(cmd, sharedFlagSets, cols)
 	var children []string
@@ -190,6 +239,7 @@ func NewCommand() *cobra.Command {
 	}
 	cmd.Use += " [shared flags] " + strings.Join(children, "|")
 	cliflag.SetUsageAndHelpFunc(kubeletPlugin, kubeletPluginFlagSets, cols)
+	cliflag.SetUsageAndHelpFunc(externalController, externalControllerFlagSets, cols)
 
 	return cmd
 }

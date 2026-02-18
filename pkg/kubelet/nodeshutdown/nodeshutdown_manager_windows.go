@@ -28,6 +28,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
@@ -50,9 +51,11 @@ const (
 
 // managerImpl has functions that can be used to interact with the Node Shutdown Manager.
 type managerImpl struct {
-	logger   klog.Logger
-	recorder record.EventRecorder
-	nodeRef  *v1.ObjectReference
+	logger     klog.Logger
+	kubeClient kubernetes.Interface
+	nodeName   string
+	recorder   record.EventRecorder
+	nodeRef    *v1.ObjectReference
 
 	getPods        eviction.ActivePodsFunc
 	syncNodeStatus func()
@@ -84,6 +87,8 @@ func NewManager(conf *Config) Manager {
 
 	manager := &managerImpl{
 		logger:         conf.Logger,
+		kubeClient:     conf.KubeClient,
+		nodeName:       conf.NodeName,
 		recorder:       conf.Recorder,
 		nodeRef:        conf.NodeRef,
 		getPods:        conf.GetPodsFunc,
@@ -147,6 +152,7 @@ func (m *managerImpl) Start() error {
 	service.SetPreShutdownHandler(m)
 
 	m.setMetrics()
+	m.attemptToResumeShutdown()
 
 	return nil
 }
@@ -280,6 +286,10 @@ func (m *managerImpl) ProcessShutdownEvent() error {
 	}
 
 	return m.podManager.killPods(activePods)
+}
+
+func (m *managerImpl) resumeShutdownEvent() error {
+	return m.ProcessShutdownEvent()
 }
 
 func (m *managerImpl) periodRequested() time.Duration {

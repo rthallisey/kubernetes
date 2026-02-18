@@ -25,6 +25,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
@@ -49,6 +50,8 @@ type Manager interface {
 // Config represents Manager configuration
 type Config struct {
 	Logger                           klog.Logger
+	KubeClient                       clientset.Interface
+	NodeName                         string
 	VolumeManager                    volumemanager.VolumeManager
 	Recorder                         record.EventRecorder
 	NodeRef                          *v1.ObjectReference
@@ -84,6 +87,9 @@ const (
 	NodeShutdownNotAdmittedReason  = "NodeShutdown"
 	nodeShutdownNotAdmittedMessage = "Pod was rejected as the node is shutting down."
 	localStorageStateFile          = "graceful_node_shutdown_state"
+	// shutdownDrainStartedReason is the Node LifecycleTransition condition
+	// reason used to indicate that shutdown drain is in progress.
+	shutdownDrainStartedReason = "shutdown-drain-started"
 
 	nodeShutdownReason  = "Terminated"
 	nodeShutdownMessage = "Pod was terminated in response to imminent node shutdown."
